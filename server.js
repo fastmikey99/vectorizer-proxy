@@ -16,7 +16,7 @@ app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['X-Image-Token']
+  exposedHeaders: ['X-Image-Token', 'x-image-token'] // Both cases
 }));
 
 // Health check endpoint
@@ -89,11 +89,19 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
       },
       responseType: 'arraybuffer',
       maxContentLength: Infinity,
-      maxBodyLength: Infinity
+      maxBodyLength: Infinity,
+      // Important: Tell axios to include all response headers
+      validateStatus: function (status) {
+        return status >= 200 && status < 300;
+      }
     });
 
-    // Log all response headers for debugging
-    console.log('Response headers:', response.headers);
+    // Debug: Log ALL headers
+    console.log('All response headers from Vectorizer.AI:');
+    const allHeaders = response.headers;
+    Object.entries(allHeaders).forEach(([key, value]) => {
+      console.log(`  ${key}: ${value}`);
+    });
 
     // Set response headers
     res.set({
@@ -101,16 +109,28 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
       'Cache-Control': 'no-store'
     });
 
-    // Forward the X-Image-Token header (check multiple case variations)
+    // Forward the X-Image-Token header
+    // Try multiple approaches to get the header
     const imageToken = response.headers['x-image-token'] || 
                        response.headers['X-Image-Token'] || 
-                       response.headers['X-IMAGE-TOKEN'];
+                       response.headers['X-IMAGE-TOKEN'] ||
+                       allHeaders['x-image-token'] ||
+                       allHeaders['X-Image-Token'];
     
     if (imageToken) {
       res.set('X-Image-Token', imageToken);
-      console.log('Forwarding X-Image-Token:', imageToken);
+      console.log('✓ Forwarding X-Image-Token:', imageToken);
     } else {
-      console.log('No X-Image-Token found in response headers');
+      console.log('✗ No X-Image-Token found in response headers');
+      
+      // Also check if it's in a different format
+      const tokenKeys = Object.keys(allHeaders).filter(key => 
+        key.toLowerCase().includes('token') || 
+        key.toLowerCase().includes('image')
+      );
+      if (tokenKeys.length > 0) {
+        console.log('Found these token-related headers:', tokenKeys);
+      }
     }
 
     // Send the response
@@ -122,6 +142,9 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
     console.error('Error processing request:', error.message);
     
     if (error.response) {
+      // Log error response headers too
+      console.log('Error response headers:', error.response.headers);
+      
       // Forward error from Vectorizer.ai
       res.status(error.response.status).json({
         error: 'Vectorizer.ai API error',
