@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  vectorizer-proxy:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=${PORT:-3000}
+      - VECTORIZER_API_ID=${VECTORIZER_API_ID}
+      - VECTORIZER_API_SECRET=${VECTORIZER_API_SECRET}
+    restart: unless-stopped
