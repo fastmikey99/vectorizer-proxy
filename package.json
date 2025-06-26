@@ -15,13 +15,16 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
-    "multer": "^1.4.5-lts.1",
     "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
     "form-data": "^4.0.0",
-    "cors": "^2.8.5"
+    "multer": "^1.4.5-lts.1"
   },
   "engines": {
     "node": ">=16.0.0"
+  },
+  "devDependencies": {
+    "@railway/cli": "^4.5.3"
   }
 }
