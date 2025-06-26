@@ -16,7 +16,7 @@ app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['X-Image-Token', 'x-image-token']
+  exposedHeaders: ['X-Image-Token', 'X-Editor-URL']
 }));
 
 // Health check endpoint
@@ -92,79 +92,91 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
       headers: {
         ...formData.getHeaders()
       },
-      // Don't specify responseType to get the default (json/text)
+      // Don't specify responseType - let axios handle it
       maxContentLength: Infinity,
       maxBodyLength: Infinity
     });
 
     console.log('Response status:', response.status);
-    console.log('Response headers:', response.headers);
+    console.log('Response content-type:', response.headers['content-type']);
     console.log('Response data type:', typeof response.data);
 
-    // Check if response is JSON (might contain editor_url)
-    let editorUrl = null;
-    let imageData = response.data;
-    
-    if (response.headers['content-type'] && response.headers['content-type'].includes('application/json')) {
-      // Response is JSON, extract editor_url if present
-      console.log('JSON response received:', response.data);
+    // Check if we got a JSON response (which should contain editor_url)
+    if (typeof response.data === 'object' && response.data !== null) {
+      console.log('JSON response received');
+      
+      // Log the editor_url if present
       if (response.data.editor_url) {
-        editorUrl = response.data.editor_url;
-        console.log('Editor URL found:', editorUrl);
+        console.log('Editor URL found:', response.data.editor_url);
+        // Set it as a header for the frontend
+        res.set('X-Editor-URL', response.data.editor_url);
       }
-      // Assume the actual image data is in a field (this might need adjustment based on actual response)
-      if (response.data.data) {
-        imageData = Buffer.from(response.data.data, 'base64');
-      } else if (response.data.svg) {
-        imageData = response.data.svg;
+
+      // Forward the X-Image-Token if present
+      if (response.data.vector_token) {
+        console.log('Vector token found:', response.data.vector_token);
+        res.set('X-Image-Token', response.data.vector_token);
       }
+
+      // Get the actual SVG data
+      let svgData;
+      if (response.data.svg) {
+        svgData = response.data.svg;
+      } else if (response.data.data) {
+        // Might be base64 encoded
+        svgData = Buffer.from(response.data.data, 'base64');
+      } else {
+        // Try to find the SVG in other possible fields
+        svgData = response.data.result || response.data.output || response.data;
+      }
+
+      // Set content type
+      res.set('Content-Type', 'image/svg+xml');
+      res.set('Cache-Control', 'no-store');
+
+      // Send the SVG data
+      res.send(svgData);
+
+      console.log(`Successfully processed image: ${req.file.originalname}`);
+
     } else {
-      // Response is binary image data
-      imageData = Buffer.from(response.data);
+      // Response is not JSON, probably direct SVG/image data
+      console.log('Binary/text response received');
+      
+      // Check headers for tokens
+      const imageToken = response.headers['x-image-token'] || 
+                         response.headers['X-Image-Token'];
+      
+      if (imageToken) {
+        res.set('X-Image-Token', imageToken);
+        console.log('X-Image-Token from header:', imageToken);
+      }
+
+      // Set response headers
+      res.set({
+        'Content-Type': response.headers['content-type'] || 'image/svg+xml',
+        'Cache-Control': 'no-store'
+      });
+
+      // Send the response data
+      res.send(response.data);
+
+      console.log(`Successfully processed image: ${req.file.originalname}`);
     }
-
-    // Set response headers
-    res.set({
-      'Content-Type': response.headers['content-type'] || 'image/svg+xml',
-      'Cache-Control': 'no-store'
-    });
-
-    // Forward the X-Image-Token header if present
-    const imageToken = response.headers['x-image-token'] || 
-                       response.headers['X-Image-Token'] || 
-                       response.headers['X-IMAGE-TOKEN'];
-    
-    if (imageToken) {
-      res.set('X-Image-Token', imageToken);
-      console.log('✓ Forwarding X-Image-Token:', imageToken);
-    }
-
-    // Forward editor URL if found
-    if (editorUrl) {
-      res.set('X-Editor-URL', editorUrl);
-      console.log('✓ Forwarding X-Editor-URL:', editorUrl);
-    }
-
-    // Send the response
-    res.send(imageData);
-
-    console.log(`Successfully processed image: ${req.file.originalname}`);
 
   } catch (error) {
     console.error('Error processing request:', error.message);
     
     if (error.response) {
-      // Log error response headers too
+      console.log('Error response status:', error.response.status);
       console.log('Error response headers:', error.response.headers);
       
-      // Forward error from Vectorizer.ai
       res.status(error.response.status).json({
         error: 'Vectorizer.ai API error',
         message: error.response.data.toString() || error.message,
         status: error.response.status
       });
     } else {
-      // General error
       res.status(500).json({
         error: 'Internal server error',
         message: error.message
