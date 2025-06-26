@@ -16,7 +16,7 @@ app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['X-Image-Token', 'x-image-token'] // Both cases
+  exposedHeaders: ['X-Image-Token', 'x-image-token']
 }));
 
 // Health check endpoint
@@ -77,6 +77,11 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
     if (req.body['output.illustrator_compatibility']) {
       formData.append('output.illustrator_compatibility', req.body['output.illustrator_compatibility']);
     }
+    
+    // Add retention policy to get the X-Image-Token
+    if (req.body['policy.retention_days']) {
+      formData.append('policy.retention_days', req.body['policy.retention_days']);
+    }
 
     // Make request to Vectorizer.ai
     const response = await axios.post('https://vectorizer.ai/api/v1/vectorize', formData, {
@@ -89,17 +94,12 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
       },
       responseType: 'arraybuffer',
       maxContentLength: Infinity,
-      maxBodyLength: Infinity,
-      // Important: Tell axios to include all response headers
-      validateStatus: function (status) {
-        return status >= 200 && status < 300;
-      }
+      maxBodyLength: Infinity
     });
 
-    // Debug: Log ALL headers
+    // Log all response headers for debugging
     console.log('All response headers from Vectorizer.AI:');
-    const allHeaders = response.headers;
-    Object.entries(allHeaders).forEach(([key, value]) => {
+    Object.entries(response.headers).forEach(([key, value]) => {
       console.log(`  ${key}: ${value}`);
     });
 
@@ -109,28 +109,16 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
       'Cache-Control': 'no-store'
     });
 
-    // Forward the X-Image-Token header
-    // Try multiple approaches to get the header
+    // Forward the X-Image-Token header (check multiple case variations)
     const imageToken = response.headers['x-image-token'] || 
                        response.headers['X-Image-Token'] || 
-                       response.headers['X-IMAGE-TOKEN'] ||
-                       allHeaders['x-image-token'] ||
-                       allHeaders['X-Image-Token'];
+                       response.headers['X-IMAGE-TOKEN'];
     
     if (imageToken) {
       res.set('X-Image-Token', imageToken);
       console.log('✓ Forwarding X-Image-Token:', imageToken);
     } else {
       console.log('✗ No X-Image-Token found in response headers');
-      
-      // Also check if it's in a different format
-      const tokenKeys = Object.keys(allHeaders).filter(key => 
-        key.toLowerCase().includes('token') || 
-        key.toLowerCase().includes('image')
-      );
-      if (tokenKeys.length > 0) {
-        console.log('Found these token-related headers:', tokenKeys);
-      }
     }
 
     // Send the response
