@@ -1,4 +1,3 @@
-cat > server.js << 'EOF'
 const express = require('express');
 const multer = require('multer');
 const FormData = require('form-data');
@@ -150,4 +149,3 @@ app.listen(PORT, '0.0.0.0', () => {
     console.warn('WARNING: API credentials not set in environment variables!');
   }
 });
-EOF
