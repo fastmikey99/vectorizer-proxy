@@ -92,16 +92,36 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
       headers: {
         ...formData.getHeaders()
       },
-      responseType: 'arraybuffer',
+      // Don't specify responseType to get the default (json/text)
       maxContentLength: Infinity,
       maxBodyLength: Infinity
     });
 
-    // Log all response headers for debugging
-    console.log('All response headers from Vectorizer.AI:');
-    Object.entries(response.headers).forEach(([key, value]) => {
-      console.log(`  ${key}: ${value}`);
-    });
+    console.log('Response status:', response.status);
+    console.log('Response headers:', response.headers);
+    console.log('Response data type:', typeof response.data);
+
+    // Check if response is JSON (might contain editor_url)
+    let editorUrl = null;
+    let imageData = response.data;
+    
+    if (response.headers['content-type'] && response.headers['content-type'].includes('application/json')) {
+      // Response is JSON, extract editor_url if present
+      console.log('JSON response received:', response.data);
+      if (response.data.editor_url) {
+        editorUrl = response.data.editor_url;
+        console.log('Editor URL found:', editorUrl);
+      }
+      // Assume the actual image data is in a field (this might need adjustment based on actual response)
+      if (response.data.data) {
+        imageData = Buffer.from(response.data.data, 'base64');
+      } else if (response.data.svg) {
+        imageData = response.data.svg;
+      }
+    } else {
+      // Response is binary image data
+      imageData = Buffer.from(response.data);
+    }
 
     // Set response headers
     res.set({
@@ -109,7 +129,7 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
       'Cache-Control': 'no-store'
     });
 
-    // Forward the X-Image-Token header (check multiple case variations)
+    // Forward the X-Image-Token header if present
     const imageToken = response.headers['x-image-token'] || 
                        response.headers['X-Image-Token'] || 
                        response.headers['X-IMAGE-TOKEN'];
@@ -117,12 +137,16 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
     if (imageToken) {
       res.set('X-Image-Token', imageToken);
       console.log('✓ Forwarding X-Image-Token:', imageToken);
-    } else {
-      console.log('✗ No X-Image-Token found in response headers');
+    }
+
+    // Forward editor URL if found
+    if (editorUrl) {
+      res.set('X-Editor-URL', editorUrl);
+      console.log('✓ Forwarding X-Editor-URL:', editorUrl);
     }
 
     // Send the response
-    res.send(Buffer.from(response.data));
+    res.send(imageData);
 
     console.log(`Successfully processed image: ${req.file.originalname}`);
 
