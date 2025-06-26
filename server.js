@@ -55,6 +55,7 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
     }
 
     console.log(`Processing image: ${req.file.originalname} (${req.file.size} bytes)`);
+    console.log('Request body parameters:', req.body);
 
     // Create form data for Vectorizer.ai API
     const formData = new FormData();
@@ -63,12 +64,18 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
       contentType: req.file.mimetype
     });
 
-    // Add processing parameters if provided
+    // Add all processing parameters
     if (req.body.mode) {
       formData.append('mode', req.body.mode);
     }
     if (req.body['processing.max_colors']) {
       formData.append('processing.max_colors', req.body['processing.max_colors']);
+    }
+    if (req.body['output.group_by_color']) {
+      formData.append('output.group_by_color', req.body['output.group_by_color']);
+    }
+    if (req.body['output.illustrator_compatibility']) {
+      formData.append('output.illustrator_compatibility', req.body['output.illustrator_compatibility']);
     }
 
     // Make request to Vectorizer.ai
@@ -85,15 +92,25 @@ app.post('/vectorize', upload.single('image'), async (req, res) => {
       maxBodyLength: Infinity
     });
 
+    // Log all response headers for debugging
+    console.log('Response headers:', response.headers);
+
     // Set response headers
     res.set({
       'Content-Type': response.headers['content-type'] || 'image/svg+xml',
       'Cache-Control': 'no-store'
     });
 
-    // Forward any custom headers (like X-Image-Token)
-    if (response.headers['x-image-token']) {
-      res.set('X-Image-Token', response.headers['x-image-token']);
+    // Forward the X-Image-Token header (check multiple case variations)
+    const imageToken = response.headers['x-image-token'] || 
+                       response.headers['X-Image-Token'] || 
+                       response.headers['X-IMAGE-TOKEN'];
+    
+    if (imageToken) {
+      res.set('X-Image-Token', imageToken);
+      console.log('Forwarding X-Image-Token:', imageToken);
+    } else {
+      console.log('No X-Image-Token found in response headers');
     }
 
     // Send the response
